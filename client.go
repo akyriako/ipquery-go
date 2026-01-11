@@ -35,13 +35,14 @@ func NewClient(ipqueryUrl, username, password string) (*Client, error) {
 	}, nil
 }
 
-func (c *Client) GetOwnIP() (string, error) {
+func (c *Client) GetOwnIP() (string, string, error) {
 	ip, err := c.getOwnIP()
 	if err != nil {
-		return c.getOwnIPFallback()
+		ip, err := c.getOwnIPFallback()
+		return ip, "ifconfig.me", err
 	}
 
-	return ip, nil
+	return ip, "github.com/akyriako/ipquery-go", nil
 }
 
 func (c *Client) getOwnIP() (string, error) {
