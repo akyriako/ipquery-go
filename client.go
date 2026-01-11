@@ -20,26 +20,79 @@ var (
 
 type Client struct {
 	httpClient *http.Client
-	ipqueryUrl string
+	ipqueryURL string
 	username   string
 	password   string
 }
 
-func NewClient(ipqueryUrl, username, password string, timeout *time.Duration) (*Client, error) {
-	_, err := url.Parse(ipqueryUrl)
+type Option func(*Client) error
+
+func NewClient(ipqueryURL string, opts ...Option) (*Client, error) {
+	u, err := url.Parse(ipqueryURL)
 	if err != nil {
 		return nil, err
 	}
 
-	if timeout == nil {
-		timeout = &defaultTimeout
+	if u.Scheme == "" || u.Host == "" {
+		return nil, fmt.Errorf("invalid ipquery service url: %q", ipqueryURL)
 	}
-	return &Client{
-		httpClient: &http.Client{Timeout: *timeout * time.Millisecond},
-		ipqueryUrl: ipqueryUrl,
-		username:   username,
-		password:   password,
-	}, nil
+
+	c := &Client{
+		httpClient: &http.Client{Timeout: defaultTimeout},
+		ipqueryURL: ipqueryURL,
+	}
+
+	for _, opt := range opts {
+		if err := opt(c); err != nil {
+			return nil, err
+		}
+	}
+
+	if c.httpClient == nil {
+		return nil, fmt.Errorf("http client cannot be nil")
+	}
+	if c.httpClient.Timeout <= 0 {
+		return nil, fmt.Errorf("timeout must be > 0. timeout=%s", c.httpClient.Timeout)
+	}
+	if (c.username == "") != (c.password == "") {
+		return nil, fmt.Errorf("basic auth requires both username and password")
+	}
+
+	return c, nil
+}
+
+func WithTimeout(d time.Duration) Option {
+	return func(c *Client) error {
+		if d <= 0 {
+			return fmt.Errorf("timeout must be > 0, got %s", d)
+		}
+		if c.httpClient == nil {
+			c.httpClient = &http.Client{}
+		}
+		c.httpClient.Timeout = d
+		return nil
+	}
+}
+
+func WithBasicAuth(username, password string) Option {
+	return func(c *Client) error {
+		if username == "" || password == "" {
+			return fmt.Errorf("username and password must both be non-empty")
+		}
+		c.username = username
+		c.password = password
+		return nil
+	}
+}
+
+func WithHTTPClient(hc *http.Client) Option {
+	return func(c *Client) error {
+		if hc == nil {
+			return fmt.Errorf("http client cannot be nil")
+		}
+		c.httpClient = hc
+		return nil
+	}
 }
 
 func (c *Client) GetOwnIP() (string, string, error) {
@@ -53,15 +106,18 @@ func (c *Client) GetOwnIP() (string, string, error) {
 }
 
 func (c *Client) getOwnIP() (string, error) {
-	req, err := http.NewRequest(http.MethodGet, c.ipqueryUrl, nil)
+	req, err := http.NewRequest(http.MethodGet, c.ipqueryURL, nil)
 	if err != nil {
 		return "", err
 	}
 
-	req.SetBasicAuth(
-		c.username,
-		c.password,
-	)
+	if (c.username != "") && (c.password != "") {
+		req.SetBasicAuth(
+			c.username,
+			c.password,
+		)
+	}
+
 	req.Header.Set("Content-Type", "application/text")
 
 	httpResponse, err := c.httpClient.Do(req)
