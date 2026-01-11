@@ -14,6 +14,10 @@ const (
 	ifconfigMeIpAddressUrl = "https://ifconfig.me/ip"
 )
 
+var (
+	defaultTimeout = 350 * time.Millisecond
+)
+
 type Client struct {
 	httpClient *http.Client
 	ipqueryUrl string
@@ -21,14 +25,17 @@ type Client struct {
 	password   string
 }
 
-func NewClient(ipqueryUrl, username, password string) (*Client, error) {
+func NewClient(ipqueryUrl, username, password string, timeout *time.Duration) (*Client, error) {
 	_, err := url.Parse(ipqueryUrl)
 	if err != nil {
 		return nil, err
 	}
 
+	if timeout == nil {
+		timeout = &defaultTimeout
+	}
 	return &Client{
-		httpClient: &http.Client{Timeout: 350 * time.Millisecond},
+		httpClient: &http.Client{Timeout: *timeout * time.Millisecond},
 		ipqueryUrl: ipqueryUrl,
 		username:   username,
 		password:   password,
